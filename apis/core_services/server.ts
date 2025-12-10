@@ -1,6 +1,6 @@
 import app from "./src/app";
-import { config } from "./src/config/config";
-import { connectDB, disconnectDB } from "./src/config/db";
+import { config } from "./src/core/config/config";
+import { connectDB, disconnectDB } from "./src/core/config/db";
 
 
 const PORT = Number(config.get('port') || 5000);
