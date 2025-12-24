@@ -20,32 +20,25 @@ export class ApiError extends Error {
 }
 
 
-export const globalErrorHandler = (err: Error | ApiError, req: Request, res: Response, next: NextFunction) => {
-    const isApiError = err instanceof ApiError;
 
-    const statusCode = isApiError ? err.statusCode : 500;
-    const message =
-        isApiError && err.isOperational
-            ? err.message
-            : "Something went wrong. Please try again later.";
+interface ErrorWithStatusCode extends Error {
+    statusCode?: number;
+}
 
-    // Centralized logging (plug in Winston / Pino / Sentry here)
-    console.error("[ERROR]", {
-        method: req.method,
-        url: req.originalUrl,
-        statusCode,
-        message: err.message,
-        stack: err.stack,
-    });
+const globalErrorHandler = (
+    err: ErrorWithStatusCode,
+    req: Request,
+    res: Response,
+    _next: NextFunction
+) => {
+    const statusCode = err.statusCode || 500;
 
-    const responseBody: any = {
+    res.status(statusCode).json({
         success: false,
-        message,
-    };
-
-    if (process.env.NODE_ENV !== "production" && isApiError && err.details) {
-        responseBody.details = err.details;
-    }
-
-    res.status(statusCode).json(responseBody);
+        code: statusCode,
+        message: err.message || 'Internal Server Error',
+        error: err.name || 'Error',
+    });
 };
+
+export default globalErrorHandler;

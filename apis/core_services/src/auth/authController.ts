@@ -1,92 +1,126 @@
 import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 import User from "./userModel";
 import { ApiError } from "../core/helper/globalErrorHandler";
 import { sendResponse } from "../core/helper/globalResponse";
-import { LoginInput } from "./authValidations";
+import { config } from "../core/config/config";
+import { IUser } from "./userTypes";
+import { HTTP_STATUS } from "../core/helper/globalValidation";
 
-// Login Controller
-export const login = async (req: Request, res: Response, next: NextFunction) => {
+
+// ============================================================================
+// Constants (Auth Controller, Response Messages)
+// ============================================================================
+
+const AUTH_ERROR_MESSAGES = {
+    CREDENTIALS_MISMATCH: "Email and Gas Id belong to different users",
+    EMAIL_MISMATCH: "Gas Id exists but email does not match",
+    GASID_MISMATCH: "Email exists but Gas Id does not match",
+    JWT_SECRET_MISSING: "Authentication configuration error",
+    DUPLICATE_EMAIL: "Email already exists",
+    DUPLICATE_GASID: "Gas Id already exists",
+} as const;
+
+const SUCCESS_MESSAGES = {
+    LOGIN_SUCCESS: "Login successful",
+    USER_CREATED: "User created and logged in successfully",
+} as const;
+
+const JWT_SECRET = config.get("backendSecretKey");
+const JWT_EXPIRES_IN = "7d";
+
+
+// ============================================================================
+// Controllers
+// ============================================================================
+
+/**
+ * Login Controller
+ *
+ * Scenarios:
+ * 1. Email + GasId match same user → Login
+ * 2. Email exists but GasId mismatch → Error
+ * 3. GasId exists but Email mismatch → Error
+ * 4. Email & GasId belong to different users → Error
+ * 5. Neither exists → Create new user
+ */
+export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { email, gasId } = req.body as LoginInput;
+        const { firstName, lastName, email, gasId } = req.body as IUser;
 
-        // Check if user with this email exists
-        const userByEmail = await User.findOne({ email });
+        if (!email || !gasId) {
+            throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Email and Gas Id are required");
+        }
 
-        // Check if user with this gasId exists
-        const userByGasId = await User.findOne({ gasId });
+        if (!JWT_SECRET) {
+            throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, AUTH_ERROR_MESSAGES.JWT_SECRET_MISSING);
+        }
 
-        // Scenario 1: Both email and gasId found
-        if (userByEmail && userByGasId) {
-            // Check if they belong to the same user
-            if (userByEmail._id.toString() === userByGasId._id.toString()) {
-                // Update lastLoggedIn
-                userByEmail.lastLoggedIn = new Date();
-                await userByEmail.save();
+        // Try login (atomic update)
+        let user = await User.findOneAndUpdate(
+            { email, gasId },
+            { lastLoggedIn: new Date() },
+            { new: true }
+        );
 
-                // Success: Both credentials match the same user
-                return sendResponse({
-                    res,
-                    status: 200,
-                    message: "Login successful",
-                    data: {
-                        user: {
-                            _id: userByEmail._id,
-                            email: userByEmail.email,
-                            gasId: userByEmail.gasId,
-                            lastLoggedIn: userByEmail.lastLoggedIn,
-                            createdAt: userByEmail.createdAt,
-                            updatedAt: userByEmail.updatedAt
-                        }
-                    }
+        let isNewUser = false;
+
+        // Create user if not found
+        if (!user) {
+            try {
+                user = await User.create({
+                    firstName,
+                    lastName,
+                    email,
+                    gasId,
+                    lastLoggedIn: new Date(),
                 });
-            } else {
-                // Error: Email and gasId belong to different users
-                throw new ApiError(
-                    400,
-                    "Email and GasId belong to different users. Please check your credentials."
-                );
+                isNewUser = true;
+            } catch (err: unknown) {
+                if (
+                    err instanceof Error &&
+                    "code" in err &&
+                    (err as { code: number }).code === 11000
+                ) {
+                    const field = Object.keys(
+                        (err as unknown as { keyPattern: Record<string, number> }).keyPattern
+                    )[0];
+
+                    throw new ApiError(
+                        HTTP_STATUS.BAD_REQUEST,
+                        field === "email"
+                            ? AUTH_ERROR_MESSAGES.GASID_MISMATCH
+                            : AUTH_ERROR_MESSAGES.EMAIL_MISMATCH
+                    );
+                }
+                throw err;
             }
         }
 
-        // Scenario 2: Only email found (gasId doesn't match)
-        if (userByEmail && !userByGasId) {
-            throw new ApiError(
-                400,
-                "Email exists but GasId does not match. Please check your GasId."
-            );
-        }
-
-        // Scenario 3: Only gasId found (email doesn't match)
-        if (!userByEmail && userByGasId) {
-            throw new ApiError(
-                400,
-                "GasId exists but email does not match. Please check your email."
-            );
-        }
-
-        // Scenario 4: Neither email nor gasId found - Create new user
-        const newUser = await User.create({
-            email,
-            gasId,
-            lastLoggedIn: new Date()
-        });
+        // Generate token
+        const token = jwt.sign(
+            {
+                userId: user._id.toString(),
+                email: user.email,
+                gasId: user.gasId,
+                firstName: user.firstName,
+                lastName: user.lastName,
+            },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
 
         sendResponse({
             res,
-            status: 201,
-            message: "User created and logged in successfully",
+            status: isNewUser ? HTTP_STATUS.CREATED : HTTP_STATUS.OK,
+            message: isNewUser ? SUCCESS_MESSAGES.USER_CREATED : SUCCESS_MESSAGES.LOGIN_SUCCESS,
             data: {
-                user: {
-                    _id: newUser._id,
-                    email: newUser.email,
-                    gasId: newUser.gasId,
-                    lastLoggedIn: newUser.lastLoggedIn,
-                    createdAt: newUser.createdAt,
-                    updatedAt: newUser.updatedAt
-                }
-            }
+                token,
+                name: `${user.firstName} ${user.lastName}`.trim(),
+                lastLoggedIn: user.lastLoggedIn,
+            },
         });
-    } catch (err) {
-        next(err);
+    } catch (error) {
+        next(error);
     }
 };
