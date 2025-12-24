@@ -10,6 +10,7 @@ const router = Router();
  * Base path: /api/auth
  * 
  * These routes are public and do not require authentication
+ * used zodRequestValidator for request validation in middleware
  */
 
 // Login endpoint
