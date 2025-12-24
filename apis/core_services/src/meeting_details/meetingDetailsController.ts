@@ -3,27 +3,55 @@ import MeetingDetails from "./meetingsDetailsModel";
 import { AuthenticatedRequest } from "../middlewares/authMiddleware";
 import { ApiError } from "../core/helper/globalErrorHandler";
 import { sendResponse } from "../core/helper/globalResponse";
-import { CreateMeetingDetailsInput, UpdateMeetingDetailsInput } from "./meetingDetailsValidations";
+import { CreateMeetingDetailsInput, GetMeetingDetailsQuery, UpdateMeetingDetailsInput } from "./meetingDetailsValidations";
+import { HTTP_STATUS } from "../core/helper/globalValidation";
+import { PipelineStage } from "mongoose";
 
 
-// Create Meeting Details
+// ============================================================================
+// Constants (Meeting Details, Response Messages)
+// ============================================================================
+
+const ERRORS = {
+    NOT_FOUND: "Meeting details not found",
+    CREATION_FAILED: "Meeting details creation failed",
+    UPDATE_FAILED: "Meeting details update failed",
+    DELETION_FAILED: "Meeting details deletion failed"
+} as const;
+
+const RESPONSE = {
+    CREATED: "Meeting details created successfully",
+    UPDATED: "Meeting details updated successfully",
+    DELETED: "Meeting details deleted successfully",
+    FETCHED: "Meeting details fetched successfully"
+} as const;
+
+
+// ============================================================================
+// Controllers (Meeting Details Controller)
+// ============================================================================
+/*
+    Controller: Create Meeting Details
+    Description: Create a new meeting details
+    Access: Authenticated
+*/
 export const createMeetingDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const data = req.body as CreateMeetingDetailsInput;
 
         const meetingDetails = await MeetingDetails.create({
             ...data,
-            createdBy: req.user?._id
+            createdBy: req.user?.userId
         });
 
         if (!meetingDetails) {
-            throw new ApiError(400, "Meeting details creation failed");
+            throw new ApiError(HTTP_STATUS.BAD_REQUEST, ERRORS.CREATION_FAILED);
         }
 
         sendResponse({
             res,
-            status: 201,
-            message: "Meeting details created successfully",
+            status: HTTP_STATUS.CREATED,
+            message: RESPONSE.CREATED,
             data: meetingDetails
         });
     } catch (err) {
@@ -31,48 +59,110 @@ export const createMeetingDetails = async (req: AuthenticatedRequest, res: Respo
     }
 };
 
-// Get all Meeting Details (with filters & pagination)
-export const getMeetingDetails = async (req: Request, res: Response, next: NextFunction) => {
+
+/*
+    Controller: Get Meeting Details
+    Description: Get all meeting details
+    Access: Authenticated
+*/
+export const getMeetingDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { page = 1, pageSize = 50, isActive, isDeleted } = req.query;
+        const { page, pageSize, isActive, isDeleted } = req.query as unknown as GetMeetingDetailsQuery;
+        const skip = (page - 1) * pageSize;
 
-        const query: any = {};
-        if (isActive !== undefined) {
-            query.isActive = isActive === 'true';
+        const matchStage: Record<string, boolean> = {};
+
+        if (isActive) {
+            matchStage.isActive = isActive;
         }
-        if (isDeleted !== undefined) {
-            query.isDeleted = isDeleted === 'true';
+
+        if (isDeleted) {
+            matchStage.isDeleted = isDeleted;
         }
 
-        const skip = ((page as number) - 1) * (pageSize as number);
+        const pipeline: PipelineStage[] = [
+            { $match: matchStage },
 
-        const [items, total] = await Promise.all([
-            MeetingDetails.find(query)
-                .skip(skip)
-                .limit(pageSize as number)
-                .populate('questionId', 'name question')
-                .populate('additionalQuestionIds', 'name question')
-                .populate('createdBy', 'fullName email')
-                .sort({ createdAt: -1 }),
-            MeetingDetails.countDocuments(query)
-        ]);
+            // Join main question
+            {
+                $lookup: {
+                    from: "questions",
+                    let: { questionId: "$questionId" },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ["$_id", "$$questionId"] } } },
+                        { $project: { name: 1, question: 1 } }
+                    ],
+                    as: "question"
+                }
+            },
+            { $unwind: { path: "$question", preserveNullAndEmptyArrays: true } },
+
+            // Join additional questions
+            {
+                $lookup: {
+                    from: "questions",
+                    let: { ids: "$additionalQuestionIds" },
+                    pipeline: [
+                        { $match: { $expr: { $in: ["$_id", "$$ids"] } } },
+                        { $project: { name: 1, question: 1 } }
+                    ],
+                    as: "additionalQuestions"
+                }
+            },
+
+            // Join creator
+            {
+                $lookup: {
+                    from: "users",
+                    let: { userId: "$createdBy" },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
+                        { $project: { fullName: 1, email: 1 } }
+                    ],
+                    as: "createdBy"
+                }
+            },
+            { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+
+            // Sort
+            { $sort: { createdAt: -1 } },
+
+            // Pagination + total count
+            {
+                $facet: {
+                    data: [
+                        { $skip: skip },
+                        { $limit: pageSize }
+                    ],
+                    total: [
+                        { $count: "count" }
+                    ]
+                }
+            }
+        ];
+
+        const result = await MeetingDetails.aggregate(pipeline);
+
+        const items = result[0]?.data ?? [];
+        const total = result[0]?.total?.[0]?.count ?? 0;
 
         sendResponse({
             res,
-            status: 200,
+            status: HTTP_STATUS.OK,
             message: "Meeting details fetched successfully",
             data: items,
             pagination: {
-                page: page as number,
-                pageSize: pageSize as number,
+                page,
+                pageSize,
                 total,
-                totalPages: Math.ceil(total / (pageSize as number))
+                totalPages: Math.ceil(total / pageSize)
             }
         });
-    } catch (err) {
-        next(err);
+    } catch (error) {
+        next(error);
     }
 };
+
 
 // Get single Meeting Details by ID
 export const getMeetingDetailsById = async (req: Request, res: Response, next: NextFunction) => {
@@ -110,7 +200,7 @@ export const updateMeetingDetails = async (req: AuthenticatedRequest, res: Respo
             id,
             {
                 ...updates,
-                updatedBy: req.user?._id
+                updatedBy: req.user?.userId
             },
             { new: true, runValidators: true }
         )
@@ -141,7 +231,7 @@ export const deleteMeetingDetails = async (req: AuthenticatedRequest, res: Respo
             id,
             {
                 isDeleted: true,
-                updatedBy: req.user?._id
+                updatedBy: req.user?.userId
             },
             { new: true }
         );

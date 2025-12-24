@@ -9,12 +9,11 @@ import { HTTP_STATUS } from "../core/helper/globalValidation";
 // ============================================================================
 
 interface JwtPayload {
-  empId: string;
-  fullName: string;
-  designation?: string;
-  locationId?: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  orgId: string;
+  gasId: string;
   roles: string;
 }
 
@@ -26,7 +25,7 @@ export interface AuthenticatedRequest extends Request {
 // Constants (Secrets and messages) 
 // ============================================================================
 
-const AUTH_ERROR_MESSAGES = {
+const ERROR = {
   JWT_SECRET_MISSING: "Authentication configuration error",
   API_KEY_MISMATCH: "Invalid API key",
   JWT_EXPIRED: "Token expired",
@@ -65,22 +64,23 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     if (!JWT_SECRET) {
       throw new ApiError(
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
-        AUTH_ERROR_MESSAGES.JWT_SECRET_MISSING);
+        ERROR.JWT_SECRET_MISSING);
     }
 
     // API key authentication (system-level access)
     const apiKey = req.headers["x-api-key"];
     if (apiKey) {
       if (apiKey !== API_KEY) {
-        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, AUTH_ERROR_MESSAGES.API_KEY_MISMATCH);
+        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.API_KEY_MISMATCH);
       }
 
       req.user = {
-        empId: "api-key",
+        userId: "api-key",
         email: "system@internal",
-        orgId: "system",
-        fullName: "System API",
-        roles: "SYSTEM",
+        gasId: "system",
+        firstName: "System",
+        lastName: "API",
+        roles: "ADMIN",
       };
       return next();
     }
@@ -88,7 +88,7 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     // JWT authentication
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
-      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, AUTH_ERROR_MESSAGES.AUTH_HEADER_MISSING);
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.AUTH_HEADER_MISSING);
     }
 
     const token = authHeader.slice(7);
@@ -98,17 +98,17 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     next();
   } catch (error) {
     if (error instanceof TokenExpiredError) {
-      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, AUTH_ERROR_MESSAGES.JWT_EXPIRED));
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.JWT_EXPIRED));
     }
 
     if (error instanceof JsonWebTokenError) {
-      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, AUTH_ERROR_MESSAGES.JWT_INVALID));
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.JWT_INVALID));
     }
 
     next(
       error instanceof ApiError
         ? error
-        : new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, AUTH_ERROR_MESSAGES.AUTH_FAILED)
+        : new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR.AUTH_FAILED)
     );
   }
 };
@@ -125,7 +125,7 @@ export const authorizeAccess =
   (requiredRoles: string | string[]) =>
     (req: AuthenticatedRequest, next: NextFunction): void => {
       if (!req.user) {
-        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, AUTH_ERROR_MESSAGES.USER_NOT_AUTHENTICATED);
+        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.USER_NOT_AUTHENTICATED);
       }
 
       const userRoles = req.user.roles
@@ -141,7 +141,7 @@ export const authorizeAccess =
       );
 
       if (!hasPermission) {
-        throw new ApiError(HTTP_STATUS.FORBIDDEN, AUTH_ERROR_MESSAGES.ACCESS_DENIED);
+        throw new ApiError(HTTP_STATUS.FORBIDDEN, ERROR.ACCESS_DENIED);
       }
 
       next();
