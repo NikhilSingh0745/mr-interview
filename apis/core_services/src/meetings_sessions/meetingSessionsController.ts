@@ -10,6 +10,7 @@ import {
     AddParticipantInput
 } from "./meetingSessionsValidations";
 import { SessionStatus } from "./meetingSessionsTypes";
+import { Types } from "mongoose";
 
 // Create Meeting Session
 export const createMeetingSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -18,7 +19,7 @@ export const createMeetingSession = async (req: AuthenticatedRequest, res: Respo
 
         const session = await MeetingSession.create({
             ...data,
-            createdBy: req.user?._id,
+            createdBy: req.user?.userId,
             status: SessionStatus.SCHEDULED
         });
 
@@ -143,7 +144,7 @@ export const updateMeetingSession = async (req: AuthenticatedRequest, res: Respo
             id,
             {
                 ...updates,
-                updatedBy: req.user?._id
+                updatedBy: req.user?.userId
             },
             { new: true, runValidators: true }
         )
@@ -173,7 +174,7 @@ export const updateSessionStatus = async (req: AuthenticatedRequest, res: Respon
 
         const updateData: any = {
             status,
-            updatedBy: req.user?._id
+            updatedBy: req.user?.userId
         };
 
         // Set actual times based on status
@@ -209,6 +210,7 @@ export const updateSessionStatus = async (req: AuthenticatedRequest, res: Respon
 export const addParticipant = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
+        const { userId } = req.user!;
         const participantData = req.body as AddParticipantInput;
 
         const session = await MeetingSession.findById(id);
@@ -237,7 +239,7 @@ export const addParticipant = async (req: AuthenticatedRequest, res: Response, n
             attendanceStatus: "NO_SHOW"
         } as any);
 
-        session.updatedBy = req.user?._id;
+        session.updatedBy = new Types.ObjectId(userId);
         await session.save();
 
         sendResponse({
@@ -255,6 +257,7 @@ export const addParticipant = async (req: AuthenticatedRequest, res: Response, n
 export const removeParticipant = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { id, participantId } = req.params;
+        const { userId } = req.user!;
 
         const session = await MeetingSession.findById(id);
 
@@ -272,7 +275,7 @@ export const removeParticipant = async (req: AuthenticatedRequest, res: Response
 
         // Remove participant
         session.participants.splice(participantIndex, 1);
-        session.updatedBy = req.user?._id;
+        session.updatedBy = new Types.ObjectId(userId);
         await session.save();
 
         sendResponse({
@@ -290,12 +293,13 @@ export const removeParticipant = async (req: AuthenticatedRequest, res: Response
 export const deleteMeetingSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
+        const { userId } = req.user!;
 
         const session = await MeetingSession.findByIdAndUpdate(
             id,
             {
                 isDeleted: true,
-                updatedBy: req.user?._id
+                updatedBy: new Types.ObjectId(userId)
             },
             { new: true }
         );

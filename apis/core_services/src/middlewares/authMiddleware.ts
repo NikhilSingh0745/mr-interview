@@ -4,9 +4,9 @@ import { config } from "../core/config/config";
 import { ApiError } from "../core/helper/globalErrorHandler";
 import { HTTP_STATUS } from "../core/helper/globalValidation";
 
-// ============================================================================
+// -------------------------
 // Types
-// ============================================================================
+// -------------------------
 
 interface JwtPayload {
   userId: string;
@@ -21,21 +21,6 @@ export interface AuthenticatedRequest extends Request {
   user?: JwtPayload;
 }
 
-// ============================================================================
-// Constants (Secrets and messages) 
-// ============================================================================
-
-const ERROR = {
-  JWT_SECRET_MISSING: "Authentication configuration error",
-  API_KEY_MISMATCH: "Invalid API key",
-  JWT_EXPIRED: "Token expired",
-  JWT_INVALID: "Invalid authentication token",
-  USER_NOT_AUTHENTICATED: "User not authenticated",
-  ACCESS_DENIED: "Access denied",
-  AUTH_HEADER_MISSING: "Authorization token missing",
-  AUTH_FAILED: "Authentication failed",
-} as const;
-
 const API_KEY = config.get("apikey");
 const JWT_SECRET = config.get("backendSecretKey");
 
@@ -43,9 +28,9 @@ const JWT_SECRET = config.get("backendSecretKey");
 const PUBLIC_ROUTES = ["/health", "/login"];
 
 
-// ============================================================================
+// -------------------------
 // Middleware Controllers
-// ============================================================================
+// -------------------------
 
 /**
  * Controller: Authenticate user using API key or JWT
@@ -54,7 +39,7 @@ const PUBLIC_ROUTES = ["/health", "/login"];
  * 2. API key authentication (system-level access)
  * 3. JWT authentication
  */
-export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction): void => {
+export const authenticateUser = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
   try {
     // Allow public routes
     if (PUBLIC_ROUTES.includes(req.path)) {
@@ -64,14 +49,14 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     if (!JWT_SECRET) {
       throw new ApiError(
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
-        ERROR.JWT_SECRET_MISSING);
+        "Authentication configuration error");
     }
 
     // API key authentication (system-level access)
     const apiKey = req.headers["x-api-key"];
     if (apiKey) {
       if (apiKey !== API_KEY) {
-        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.API_KEY_MISMATCH);
+        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
       }
 
       req.user = {
@@ -88,7 +73,7 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     // JWT authentication
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
-      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.AUTH_HEADER_MISSING);
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, "Authorization token missing");
     }
 
     const token = authHeader.slice(7);
@@ -98,17 +83,17 @@ export const authenticateUser = (req: AuthenticatedRequest, next: NextFunction):
     next();
   } catch (error) {
     if (error instanceof TokenExpiredError) {
-      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.JWT_EXPIRED));
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, "Token expired"));
     }
 
     if (error instanceof JsonWebTokenError) {
-      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.JWT_INVALID));
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, "Invalid authentication token"));
     }
 
     next(
       error instanceof ApiError
         ? error
-        : new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR.AUTH_FAILED)
+        : new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, "Authentication failed")
     );
   }
 };
@@ -125,7 +110,7 @@ export const authorizeAccess =
   (requiredRoles: string | string[]) =>
     (req: AuthenticatedRequest, next: NextFunction): void => {
       if (!req.user) {
-        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, ERROR.USER_NOT_AUTHENTICATED);
+        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, "User not authenticated");
       }
 
       const userRoles = req.user.roles
@@ -141,7 +126,7 @@ export const authorizeAccess =
       );
 
       if (!hasPermission) {
-        throw new ApiError(HTTP_STATUS.FORBIDDEN, ERROR.ACCESS_DENIED);
+        throw new ApiError(HTTP_STATUS.FORBIDDEN, "Access denied");
       }
 
       next();

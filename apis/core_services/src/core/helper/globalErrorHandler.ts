@@ -25,7 +25,7 @@ interface ErrorWithStatusCode extends Error {
     statusCode?: number;
 }
 
-const globalErrorHandler = (
+export const globalErrorHandler = (
     err: ErrorWithStatusCode,
     req: Request,
     res: Response,
@@ -40,5 +40,3 @@ const globalErrorHandler = (
         error: err.name || 'Error',
     });
 };
-
-export default globalErrorHandler;

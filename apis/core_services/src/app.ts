@@ -1,8 +1,8 @@
 import express from "express";
 import { globalErrorHandler } from "./core/helper/globalErrorHandler";
 import cors from "cors";
-import { authenticateUser } from "./middlewares/authMiddleware";
 import routes from "./routes";
+import { authenticateUser } from "./middlewares/authMiddleware";
 
 const app = express();
 app.use(express.json());

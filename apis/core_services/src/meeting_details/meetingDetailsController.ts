@@ -8,33 +8,7 @@ import { HTTP_STATUS } from "../core/helper/globalValidation";
 import { PipelineStage } from "mongoose";
 
 
-// ============================================================================
-// Constants (Meeting Details, Response Messages)
-// ============================================================================
-
-const ERRORS = {
-    NOT_FOUND: "Meeting details not found",
-    CREATION_FAILED: "Meeting details creation failed",
-    UPDATE_FAILED: "Meeting details update failed",
-    DELETION_FAILED: "Meeting details deletion failed"
-} as const;
-
-const RESPONSE = {
-    CREATED: "Meeting details created successfully",
-    UPDATED: "Meeting details updated successfully",
-    DELETED: "Meeting details deleted successfully",
-    FETCHED: "Meeting details fetched successfully"
-} as const;
-
-
-// ============================================================================
-// Controllers (Meeting Details Controller)
-// ============================================================================
-/*
-    Controller: Create Meeting Details
-    Description: Create a new meeting details
-    Access: Authenticated
-*/
+// Create Meeting Details
 export const createMeetingDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const data = req.body as CreateMeetingDetailsInput;
@@ -45,13 +19,13 @@ export const createMeetingDetails = async (req: AuthenticatedRequest, res: Respo
         });
 
         if (!meetingDetails) {
-            throw new ApiError(HTTP_STATUS.BAD_REQUEST, ERRORS.CREATION_FAILED);
+            throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Meeting details creation failed");
         }
 
         sendResponse({
             res,
             status: HTTP_STATUS.CREATED,
-            message: RESPONSE.CREATED,
+            message: "Meeting details created successfully",
             data: meetingDetails
         });
     } catch (err) {
@@ -60,11 +34,7 @@ export const createMeetingDetails = async (req: AuthenticatedRequest, res: Respo
 };
 
 
-/*
-    Controller: Get Meeting Details
-    Description: Get all meeting details
-    Access: Authenticated
-*/
+// Get Meeting Details
 export const getMeetingDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { page, pageSize, isActive, isDeleted } = req.query as unknown as GetMeetingDetailsQuery;
@@ -189,6 +159,7 @@ export const getMeetingDetailsById = async (req: Request, res: Response, next: N
         next(err);
     }
 };
+
 
 // Update Meeting Details
 export const updateMeetingDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
