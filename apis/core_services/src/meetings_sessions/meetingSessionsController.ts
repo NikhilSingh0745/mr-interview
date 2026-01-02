@@ -12,6 +12,7 @@ import {
 import { SessionStatus } from "./meetingSessionsTypes";
 import { Types } from "mongoose";
 
+
 // Create Meeting Session
 export const createMeetingSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -37,6 +38,7 @@ export const createMeetingSession = async (req: AuthenticatedRequest, res: Respo
         next(err);
     }
 };
+
 
 // Get all Meeting Sessions (with filters & pagination)
 export const getMeetingSessions = async (req: Request, res: Response, next: NextFunction) => {
