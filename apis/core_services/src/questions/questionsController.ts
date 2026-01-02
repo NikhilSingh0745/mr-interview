@@ -11,6 +11,7 @@ import { sendResponse } from "../core/helper/globalResponse";
 export const createQuestion = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { name, industryType, question, tags, requiredSample } = req.body as IQuestion;
+        const { userId } = req.user!;
 
         const createdQuestion = await Question.create({
             name,
@@ -18,7 +19,7 @@ export const createQuestion = async (req: AuthenticatedRequest, res: Response, n
             question,
             tags,
             requiredSample,
-            createdBy: req.user?._id,
+            createdBy: userId,
         });
 
         if (!createdQuestion) {

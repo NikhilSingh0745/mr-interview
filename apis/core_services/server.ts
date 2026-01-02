@@ -1,72 +1,37 @@
+import http from "http";
+import { Server } from "socket.io";
 import app from "./src/app";
-import { config } from "./src/core/config/config";
-import { connectDB, disconnectDB } from "./src/core/config/db";
+import { initGemini } from "./src/core/config/gemini";
+import { initSocket } from "./src/core/config/socketService";
 
+const PORT = 3001;
 
-const PORT = Number(config.get('port') || 5000);
-let server: ReturnType<typeof app.listen> | undefined;
+async function start() {
+  await initGemini();
 
-const start = async () => {
-  try {
-    console.log('🟡 Connecting to services...');
-    await Promise.all([connectDB()]);
-    console.log('🟢 Services connected');
+  const server = http.createServer(app);
 
-    server = app.listen(PORT, () => {
-      console.log(`✅ Server started at http://localhost:${PORT}`);
-    });
+  const io = new Server(server, {
+    path: "/socket.io",
+    cors: {
+      origin: "http://localhost:3000",
+      credentials: true,
+      methods: ["GET", "POST"],
+    },
+    transports: ["websocket", "polling"],
+    allowEIO3: true,
+  });
 
-    const shutdown = async () => {
-      console.log('🟠 Shutting down server...');
+  initSocket(io);
 
-      // Close HTTP server and wait for it to finish
-      await new Promise<void>((resolve) => {
-        if (server) {
-          server.close(() => {
-            console.log('🔴 HTTP server closed');
-            resolve();
-          });
-        } else {
-          resolve();
-        }
-      });
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running at http://localhost:${PORT}`);
+  });
 
-      // Then close all other services
-      const services = [
-        { name: 'MongoDB', fn: disconnectDB },
-      ];
-
-      await Promise.allSettled(
-        services.map(async (service) => {
-          try {
-            await service.fn();
-            console.log(`🧩 ${service.name} disconnected`);
-            return { success: true, service: service.name };
-          } catch (error) {
-            console.error(`❌ Failed to close ${service.name}:`, error);
-            return { success: false, service: service.name, error };
-          }
-        })
-      );
-
-      console.log('🟢 All services closed');
-      process.exit(0);
-    };
-
-    // Use regular function in listeners and call shutdown from there,
-    ['SIGINT', 'SIGTERM', 'SIGUSR2'].forEach((signal) => {
-      process.once(signal, () => {
-        shutdown().catch((err) => {
-          console.error('❌ Error during shutdown:', err);
-        });
-      });
-    });
-
-
-  } catch (err) {
-    console.error('❌ Server failed to start:', err);
-    process.exit(1);
-  }
-};
+  process.on("SIGINT", () => {
+    console.log("🛑 Shutting down...");
+    server.close(() => process.exit(0));
+  });
+}
 
 start();

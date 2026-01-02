@@ -16,15 +16,10 @@ const userSchema = new mongoose.Schema<IUser>(
         email: {
             type: String,
             required: true,
-            unique: true,
             lowercase: true,
             trim: true
         },
-        gasId: {
-            type: Types.ObjectId,
-            required: true,
-            unique: true
-        },
+        gasId: { type: Types.ObjectId, required: true },
         lastLoggedIn: {
             type: Date
         }

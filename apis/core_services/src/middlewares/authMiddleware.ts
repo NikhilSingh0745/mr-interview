@@ -25,7 +25,8 @@ const API_KEY = config.get("apikey");
 const JWT_SECRET = config.get("backendSecretKey");
 
 // Routes that do not require auth
-const PUBLIC_ROUTES = ["/health", "/login"];
+const PUBLIC_ROUTES = ["/health", "/login", "/gemini/chat"];
+
 
 
 // -------------------------
