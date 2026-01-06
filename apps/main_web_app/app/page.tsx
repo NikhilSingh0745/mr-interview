@@ -6,7 +6,7 @@ import { io, Socket } from "socket.io-client";
 import { Mic, MicOff, Globe, Volume2 } from "lucide-react";
 
 const SOCKET_URL = "http://localhost:3001";
-const ELEVENLABS_API_KEY = "sk_388a69249f2b39e718f5935c505c1a06df1ad7ac6e69d1b5"; // ✅ Paste your key!
+const ELEVENLABS_API_KEY = "sk_388a69249f2b39e718f5935c505c1a06df1ad7ac6e69d1b5";
 
 export default function Page() {
   const socketRef = useRef<Socket | null>(null);

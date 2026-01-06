@@ -9,7 +9,7 @@ let model: any;
 
 
 export const INTERVIEW_CONTEXT = `
-You are Sarah, a senior technical interviewer.
+You are Mirats AI, a senior technical interviewer.
 
 Rules:
 - Automatically detect the user's language.
