@@ -1,37 +1,60 @@
-import http from "http";
-import { Server } from "socket.io";
 import app from "./src/app";
-import { initGemini } from "./src/core/config/gemini";
-import { initSocket } from "./src/core/config/socketService";
+import { config } from "./src/core/config/config";
+import { connectDB, disconnectDB } from "./src/core/config/db";
+import type { Server } from "http";
 
-const PORT = 3001;
+const PORT = Number(config.get("port")) || 5000;
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 
-async function start() {
-  await initGemini();
+let server: Server | null = null;
+let shuttingDown = false;
 
-  const server = http.createServer(app);
+// Start server
+async function start(): Promise<void> {
+  try {
+    await connectDB();
 
-  const io = new Server(server, {
-    path: "/socket.io",
-    cors: {
-      origin: "http://localhost:3000",
-      credentials: true,
-      methods: ["GET", "POST"],
-    },
-    transports: ["websocket", "polling"],
-    allowEIO3: true,
-  });
+    server = app.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
 
-  initSocket(io);
+    ["SIGINT", "SIGTERM", "SIGUSR2"].forEach(signal => {
+      process.on(signal, () => shutdown(signal as NodeJS.Signals));
+    });
+  } catch (error) {
+    console.error("Startup failed:", error);
+    process.exit(1);
+  }
+}
 
-  server.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
-  });
+// Shutdown server
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
 
-  process.on("SIGINT", () => {
-    console.log("🛑 Shutting down...");
-    server.close(() => process.exit(0));
-  });
+  console.log(`Received ${signal}. Shutting down...`);
+
+  const timeout = setTimeout(() => {
+    console.error("Forced shutdown");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+
+  try {
+    if (server) {
+      await new Promise<void>((resolve, reject) => {
+        server!.close(err => (err ? reject(err) : resolve()));
+      });
+    }
+
+    await disconnectDB();
+
+    clearTimeout(timeout);
+    process.exit(0);
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error("Shutdown failed:", error);
+    process.exit(1);
+  }
 }
 
 start();
